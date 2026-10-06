@@ -63,18 +63,85 @@ knew where to look (using the debug panel and by calling the functions directly)
 
 ## 2. How did you use AI as a teammate?
 
-- Which AI tools did you use on this project (for example: ChatGPT, Gemini, Copilot)?
-- Give one example of an AI suggestion that was correct (including what the AI suggested and how you verified the result).
-- Give one example of an AI suggestion you did not accept as written (including what the AI suggested, why you rejected or changed it, and how you verified your version). It does not have to be a suggestion that was wrong: over-engineered, out of scope, harder to read, or a poor fit for this codebase all count.
+**Tool:** I used Claude Code inside VS Code. It could read every file in the project,
+run `pytest`, and run the app with Streamlit's testing tool, so it could check its own
+claims instead of only guessing from the code.
+
+**A suggestion that was correct — explaining my Game 1 bug.** In Game 1, guesses of 10,
+8 and 9 got hints that no secret number could satisfy. I asked the AI why. It explained
+that this was really *two* bugs at once: on every even-numbered guess, `app.py` turned
+the secret into text (`str(secret)`), so `check_guess` compared `"8"` and `"50"`
+alphabetically, and on top of that the hint messages were swapped ("Too High" said
+"Go HIGHER!"). Its fix was to delete the text conversion, delete the `except TypeError`
+block that hid the problem, and fix the messages. I verified it three ways: a pytest that
+replays my Game 1 guesses (`test_game1_hints_are_consistent`), a pytest for my Game 2
+(65 vs. 79 must be "Too Low"), and replaying the game myself with the debug panel open —
+every hint pointed toward the secret.
+
+**A suggestion I did not accept as written — the first "fix" didn't fix the game.** The
+AI first moved `check_guess` into `logic_utils.py`, fixed it there, and reported
+"7 passed." But when I played the game, the hints were *still* backwards. I told it the
+game still wasn't working, and it turned out `app.py` was still using its own old copy
+of `check_guess` — the tests only checked the new copy. The AI then connected `app.py`
+to the fixed function and removed the `str(secret)` lines, and the hints were correct
+when I played again. This taught me that passing tests only prove the code they test;
+I had to play the real game to know the bug was actually gone.
+
+A second, smaller example: the AI drafted Section 1 of this reflection with an example
+game ("I guessed 60 against a secret of 50") that never happened to me. I replaced it
+with my two real games, because the bug log should describe what I actually saw.
 
 ---
 
 ## 3. Debugging and testing your fixes
 
-- How did you decide whether a bug was really fixed?
-- Describe at least one test you ran (manual or using pytest)  
-  and what it showed you about your code.
-- Did AI help you design or understand any tests? How?
+**How I decided a bug was really fixed.** I only counted a bug as fixed when two things
+were true: a pytest that targets that exact bug passed, *and* the bug no longer happened
+when I played the real game. I learned to require both the hard way — after the first
+hint fix, all the tests passed but the game still gave backwards hints, because `app.py`
+was using an old copy of `check_guess` that the tests never touched. So every time, I
+restarted Streamlit, opened the Developer Debug Info panel to see the secret, and
+repeated what had gone wrong before.
+
+**A test I ran and what it showed.** `test_game1_hints_are_consistent` replays my Game 1
+guesses (10, then 8, then 9) against a secret of 9 and checks that the answers are
+"Too High", "Too Low", and "Win". Before the fix, those same guesses gave hints that no
+secret could satisfy. It showed me the comparison now treats guesses as numbers every
+time, not only on odd-numbered guesses. A related test,
+`test_string_secret_is_not_silently_compared_as_text`, checks that passing the secret as
+text now raises an error. I liked that one because the original bug was hidden by an
+`except` block — now the same mistake would crash loudly instead of quietly giving wrong
+hints.
+
+I also checked the "Attempts left" fix by playing a full game on Normal: the banner
+started at 8, stayed at 8 when I typed `abc`, dropped by exactly one per real guess, and
+the game ended at 0. Before the fix it showed one more attempt than I really had.
+
+All 11 tests pass (the 3 starter tests plus 8 I added):
+
+```
+tests/test_game_logic.py::test_winning_guess PASSED
+tests/test_game_logic.py::test_guess_too_high PASSED
+tests/test_game_logic.py::test_guess_too_low PASSED
+tests/test_game_logic.py::test_game1_hints_are_consistent PASSED
+tests/test_game_logic.py::test_game2_guess_below_secret_is_too_low PASSED
+tests/test_game_logic.py::test_single_digit_guess_compared_as_number PASSED
+tests/test_game_logic.py::test_string_secret_is_not_silently_compared_as_text PASSED
+tests/test_game_logic.py::test_first_guess_win_scores_100 PASSED
+tests/test_game_logic.py::test_later_win_scores_less_but_never_below_10 PASSED
+tests/test_game_logic.py::test_wrong_guess_never_increases_score PASSED
+tests/test_game_logic.py::test_difficulty_ranges PASSED
+============================== 11 passed in 0.01s ==============================
+```
+
+**Did AI help with the tests?** Yes. The AI wrote the new tests, and I made sure each one
+was based on a bug I actually saw — two of them replay my own games. It also pointed out
+that the starter tests expected `check_guess` to return just `"Win"` / `"Too High"` /
+`"Too Low"`, while the original code returned a pair of (outcome, message). That's why
+the hint text now lives in `app.py` and `check_guess` returns only the outcome. The AI
+also ran the real app with Streamlit's testing tool (`AppTest`) to simulate whole games —
+winning on the first guess, losing and clicking New Game, and switching to Easy 20 times
+to check the secret always landed in 1–20.
 
 ---
 
@@ -82,11 +149,23 @@ knew where to look (using the debug panel and by calling the functions directly)
 
 - How would you explain Streamlit "reruns" and session state to a friend who has never used Streamlit?
 
+Every time you click a button or type in a box, Streamlit runs your whole Python file
+again from the top, like refreshing a page. That means normal variables are forgotten
+on every click, so anything the game needs to remember (the secret number, attempts,
+score) has to go in `st.session_state`, which is like a notebook that survives each
+rerun. The tricky part is that the page is drawn in order, top to bottom, during that
+run: the "Attempts left" banner was wrong because it was drawn near the top, *before*
+the code further down counted my guess, so it always showed the old number. Session
+state also caused the New Game bug — the button reset some values but left `status`
+saved as "lost" in the notebook, so every rerun saw "lost" and stopped the game again.
+
 ---
 
 ## 5. Looking ahead: your developer habits
 
 - What is one habit or strategy from this project that you want to reuse in future labs or projects?
-  - This could be a testing habit, a prompting strategy, or a way you used Git.
+   The collaboration with AI was very useful and intuitive, I will definitely use it in the future. The project helped me to go look for errors, which is very useful and also fun to do.
 - What is one thing you would do differently next time you work with AI on a coding task?
+   I think I will try to be more precise when asking it what to do, as sometimes my prompts weren;t as precise as they needed to be, and I had to reformulate and ask again so it did it properly.
 - In one or two sentences, describe how this project changed the way you think about AI generated code.
+   The project made me understand that AI is a tool that makes our work easier and more efficient, but that we still need to be able to find the right prompt. We are still telling AI what to do, and we need to make sure we know what AI is doing so we are not just getting guided by it, and we guide it
