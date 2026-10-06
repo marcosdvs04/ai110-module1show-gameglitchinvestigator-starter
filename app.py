@@ -34,10 +34,15 @@ def check_guess(guess, secret):
         return "Win", "🎉 Correct!"
 
     try:
+        # FIXME: Logic breaks here. The hint text is inverted: "Too High" should
+        # tell the player to go LOWER, and "Too Low" should tell them to go HIGHER.
         if guess > secret:
             return "Too High", "📈 Go HIGHER!"
         else:
             return "Too Low", "📉 Go LOWER!"
+    # FIXME: Logic breaks here. This except block hides the real bug. A TypeError
+    # only happens because app.py hands in a str secret; instead of surfacing that,
+    # it silently compares the numbers as TEXT ("9" > "50" is True alphabetically).
     except TypeError:
         g = str(guess)
         if g == secret:
@@ -49,12 +54,16 @@ def check_guess(guess, secret):
 
 def update_score(current_score: int, outcome: str, attempt_number: int):
     if outcome == "Win":
+        # FIXME: Logic breaks here. Off-by-one: winning on attempt 1 should award
+        # the full 100, but (attempt_number + 1) double-counts and awards 80.
         points = 100 - 10 * (attempt_number + 1)
         if points < 10:
             points = 10
         return current_score + points
 
     if outcome == "Too High":
+        # FIXME: Logic breaks here. A wrong guess REWARDS the player with +5 on
+        # even-numbered attempts. "Too High" and "Too Low" should be penalised the same.
         if attempt_number % 2 == 0:
             return current_score + 5
         return current_score - 5
@@ -92,7 +101,13 @@ st.sidebar.caption(f"Attempts allowed: {attempt_limit}")
 if "secret" not in st.session_state:
     st.session_state.secret = random.randint(low, high)
 
+# FIXME: Logic breaks here. The secret is generated ONCE and never regenerated when
+# the player changes difficulty, so switching to Easy (1-20) can leave a secret of 87
+# in session_state -- an unwinnable game that still advertises "Range: 1 to 20".
+
 if "attempts" not in st.session_state:
+    # FIXME: Logic breaks here. Attempts should start at 0 (none used yet). Starting
+    # at 1 silently steals an attempt and makes the "Attempts left" counter wrong.
     st.session_state.attempts = 1
 
 if "score" not in st.session_state:
@@ -106,6 +121,8 @@ if "history" not in st.session_state:
 
 st.subheader("Make a guess")
 
+# FIXME: Logic breaks here. "between 1 and 100" is hardcoded and ignores the
+# difficulty range shown in the sidebar.
 st.info(
     f"Guess a number between 1 and 100. "
     f"Attempts left: {attempt_limit - st.session_state.attempts}"
@@ -132,6 +149,10 @@ with col3:
     show_hint = st.checkbox("Show hint", value=True)
 
 if new_game:
+    # FIXME: Logic breaks here. This resets attempts and the secret but NOT status,
+    # score, or history. Because status stays "lost", the very next rerun falls into
+    # the st.stop() below and the player is locked out permanently.
+    # It also hardcodes randint(1, 100), ignoring the selected difficulty range.
     st.session_state.attempts = 0
     st.session_state.secret = random.randint(1, 100)
     st.success("New game started.")
@@ -145,6 +166,8 @@ if st.session_state.status != "playing":
     st.stop()
 
 if submit:
+    # FIXME: Logic breaks here. The attempt is counted BEFORE the input is validated,
+    # so typing "abc" burns one of the player's limited guesses.
     st.session_state.attempts += 1
 
     ok, guess_int, err = parse_guess(raw_guess)
@@ -155,6 +178,9 @@ if submit:
     else:
         st.session_state.history.append(guess_int)
 
+        # FIXME: Logic breaks here. On every even attempt the secret is turned into a
+        # string, so check_guess compares "10" vs "50" as TEXT, not numbers. This is why
+        # guesses 10, 8 and 9 produced hints that no single secret could satisfy.
         if st.session_state.attempts % 2 == 0:
             secret = str(st.session_state.secret)
         else:
