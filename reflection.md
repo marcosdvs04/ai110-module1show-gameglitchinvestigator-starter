@@ -164,8 +164,8 @@ saved as "lost" in the notebook, so every rerun saw "lost" and stopped the game 
 ## 5. Looking ahead: your developer habits
 
 - What is one habit or strategy from this project that you want to reuse in future labs or projects?
-   The collaboration with AI was very useful and intuitive, I will definitely use it in the future. The project helped me to go look for errors, which is very useful and also fun to do.
+   The collaboration with AI was very useful and intuitive, I will definitely use it in the future. The project helped me to go look for errors, which is very useful and also fun to do. I'll keep the habit of playing the real app after the tests pass, because in this project the tests passed while the game was still broken.
 - What is one thing you would do differently next time you work with AI on a coding task?
-   I think I will try to be more precise when asking it what to do, as sometimes my prompts weren;t as precise as they needed to be, and I had to reformulate and ask again so it did it properly.
+   I think I will try to be more precise when asking it what to do, as sometimes my prompts weren't as precise as they needed to be, and I had to reformulate and ask again so it did it properly.
 - In one or two sentences, describe how this project changed the way you think about AI generated code.
    The project made me understand that AI is a tool that makes our work easier and more efficient, but that we still need to be able to find the right prompt. We are still telling AI what to do, and we need to make sure we know what AI is doing so we are not just getting guided by it, and we guide it
