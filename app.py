@@ -1,77 +1,16 @@
 import random
 import streamlit as st
 
-def get_range_for_difficulty(difficulty: str):
-    if difficulty == "Easy":
-        return 1, 20
-    if difficulty == "Normal":
-        return 1, 100
-    if difficulty == "Hard":
-        return 1, 50
-    return 1, 100
+from logic_utils import check_guess, get_range_for_difficulty, parse_guess, update_score
 
-
-def parse_guess(raw: str):
-    if raw is None:
-        return False, None, "Enter a guess."
-
-    if raw == "":
-        return False, None, "Enter a guess."
-
-    try:
-        if "." in raw:
-            value = int(float(raw))
-        else:
-            value = int(raw)
-    except Exception:
-        return False, None, "That is not a number."
-
-    return True, value, None
-
-
-def check_guess(guess, secret):
-    if guess == secret:
-        return "Win", "🎉 Correct!"
-
-    try:
-        # FIXME: Logic breaks here. The hint text is inverted: "Too High" should
-        # tell the player to go LOWER, and "Too Low" should tell them to go HIGHER.
-        if guess > secret:
-            return "Too High", "📈 Go HIGHER!"
-        else:
-            return "Too Low", "📉 Go LOWER!"
-    # FIXME: Logic breaks here. This except block hides the real bug. A TypeError
-    # only happens because app.py hands in a str secret; instead of surfacing that,
-    # it silently compares the numbers as TEXT ("9" > "50" is True alphabetically).
-    except TypeError:
-        g = str(guess)
-        if g == secret:
-            return "Win", "🎉 Correct!"
-        if g > secret:
-            return "Too High", "📈 Go HIGHER!"
-        return "Too Low", "📉 Go LOWER!"
-
-
-def update_score(current_score: int, outcome: str, attempt_number: int):
-    if outcome == "Win":
-        # FIXME: Logic breaks here. Off-by-one: winning on attempt 1 should award
-        # the full 100, but (attempt_number + 1) double-counts and awards 80.
-        points = 100 - 10 * (attempt_number + 1)
-        if points < 10:
-            points = 10
-        return current_score + points
-
-    if outcome == "Too High":
-        # FIXME: Logic breaks here. A wrong guess REWARDS the player with +5 on
-        # even-numbered attempts. "Too High" and "Too Low" should be penalised the same.
-        if attempt_number % 2 == 0:
-            return current_score + 5
-        return current_score - 5
-
-    if outcome == "Too Low":
-        return current_score - 5
-
-    return current_score
+# FIX: check_guess moved to logic_utils.py with Claude Code. It now returns only the
+# outcome, and the hint text lives here with the right direction for each outcome
+# (the old version told you to go HIGHER when your guess was already too high).
+HINT_MESSAGES = {
+    "Win": "🎉 Correct!",
+    "Too High": "📉 Go LOWER!",
+    "Too Low": "📈 Go HIGHER!",
+}
 
 st.set_page_config(page_title="Glitchy Guesser", page_icon="🎮")
 
@@ -98,35 +37,38 @@ low, high = get_range_for_difficulty(difficulty)
 st.sidebar.caption(f"Range: {low} to {high}")
 st.sidebar.caption(f"Attempts allowed: {attempt_limit}")
 
-if "secret" not in st.session_state:
+# FIX: One place that resets EVERY piece of game state, built with Claude Code.
+# New Game used to reset only attempts and the secret (leaving status "lost", so the
+# game stayed locked), and it ignored the difficulty range. Attempts start at 0 --
+# starting at 1 silently took away one of the player's guesses.
+def start_new_game():
     st.session_state.secret = random.randint(low, high)
-
-# FIXME: Logic breaks here. The secret is generated ONCE and never regenerated when
-# the player changes difficulty, so switching to Easy (1-20) can leave a secret of 87
-# in session_state -- an unwinnable game that still advertises "Range: 1 to 20".
-
-if "attempts" not in st.session_state:
-    # FIXME: Logic breaks here. Attempts should start at 0 (none used yet). Starting
-    # at 1 silently steals an attempt and makes the "Attempts left" counter wrong.
-    st.session_state.attempts = 1
-
-if "score" not in st.session_state:
+    st.session_state.attempts = 0
     st.session_state.score = 0
-
-if "status" not in st.session_state:
     st.session_state.status = "playing"
-
-if "history" not in st.session_state:
     st.session_state.history = []
+    st.session_state.difficulty = difficulty
+
+
+# FIX: Also start a new game when the difficulty changes. The secret used to be picked
+# once and kept, so switching to Easy (1-20) could leave a secret of 87 -- unwinnable.
+if st.session_state.get("difficulty") != difficulty:
+    start_new_game()
 
 st.subheader("Make a guess")
 
-# FIXME: Logic breaks here. "between 1 and 100" is hardcoded and ignores the
-# difficulty range shown in the sidebar.
-st.info(
-    f"Guess a number between 1 and 100. "
-    f"Attempts left: {attempt_limit - st.session_state.attempts}"
-)
+# FIX: Reserve the banner's spot here but fill it in at the END of the script
+# (show_attempts_left), after the current guess has been counted. Drawing it here
+# showed the count from before the guess -- always one more than the player had.
+# Also uses the real difficulty range instead of a hardcoded "1 and 100".
+attempts_box = st.empty()
+
+
+def show_attempts_left():
+    attempts_box.info(
+        f"Guess a number between {low} and {high}. "
+        f"Attempts left: {attempt_limit - st.session_state.attempts}"
+    )
 
 with st.expander("Developer Debug Info"):
     st.write("Secret:", st.session_state.secret)
@@ -149,13 +91,7 @@ with col3:
     show_hint = st.checkbox("Show hint", value=True)
 
 if new_game:
-    # FIXME: Logic breaks here. This resets attempts and the secret but NOT status,
-    # score, or history. Because status stays "lost", the very next rerun falls into
-    # the st.stop() below and the player is locked out permanently.
-    # It also hardcodes randint(1, 100), ignoring the selected difficulty range.
-    st.session_state.attempts = 0
-    st.session_state.secret = random.randint(1, 100)
-    st.success("New game started.")
+    start_new_game()
     st.rerun()
 
 if st.session_state.status != "playing":
@@ -163,30 +99,26 @@ if st.session_state.status != "playing":
         st.success("You already won. Start a new game to play again.")
     else:
         st.error("Game over. Start a new game to try again.")
+    show_attempts_left()
     st.stop()
 
 if submit:
-    # FIXME: Logic breaks here. The attempt is counted BEFORE the input is validated,
-    # so typing "abc" burns one of the player's limited guesses.
-    st.session_state.attempts += 1
-
     ok, guess_int, err = parse_guess(raw_guess)
 
     if not ok:
         st.session_state.history.append(raw_guess)
         st.error(err)
     else:
+        # FIX: Count the attempt only once the guess is valid, so typing "abc"
+        # no longer uses up one of the player's guesses.
+        st.session_state.attempts += 1
         st.session_state.history.append(guess_int)
 
-        # FIXME: Logic breaks here. On every even attempt the secret is turned into a
-        # string, so check_guess compares "10" vs "50" as TEXT, not numbers. This is why
-        # guesses 10, 8 and 9 produced hints that no single secret could satisfy.
-        if st.session_state.attempts % 2 == 0:
-            secret = str(st.session_state.secret)
-        else:
-            secret = st.session_state.secret
-
-        outcome, message = check_guess(guess_int, secret)
+        # FIX: Removed the even-attempt str(secret) cast (found with Claude Code). The
+        # secret is always compared as a number now, so guesses like 10, 8, 9 get
+        # hints that agree with each other.
+        outcome = check_guess(guess_int, st.session_state.secret)
+        message = HINT_MESSAGES[outcome]
 
         if show_hint:
             st.warning(message)
@@ -212,6 +144,8 @@ if submit:
                     f"The secret was {st.session_state.secret}. "
                     f"Score: {st.session_state.score}"
                 )
+
+show_attempts_left()
 
 st.divider()
 st.caption("Built by an AI that claims this code is production-ready.")
